@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>أداة الأقواس</title>
+<style>
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{display:flex;flex-direction:column;background:#f9f4e8;color:#2a2420;font:14px/1.4 "Segoe UI",Tahoma,"Noto Sans Arabic",system-ui,sans-serif;padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
+#top{position:fixed;left:0;right:0;bottom:0;z-index:5;background:#fff;border-radius:18px 18px 0 0;border-top:1px solid #d9d0c0;box-shadow:0 -8px 24px rgba(60,30,10,.18);padding:12px 14px calc(14px + env(safe-area-inset-bottom,0px));max-height:46vh;overflow:auto;transform:translateY(105%);transition:transform .22s}#top.open{transform:none}
+#grip{position:sticky;top:-12px;z-index:1;background:#fff;margin:-12px -14px 6px;height:34px;display:flex;justify-content:center;align-items:center;touch-action:none}#grip i{width:46px;height:5px;border-radius:3px;background:#d3c2ab}
+.n{display:flex;gap:8px;align-items:center}.f input[type=range]{flex:1;padding:0;border:0;background:none;height:36px;accent-color:#5a2e1a}.f span{font-size:13px}.n button{padding:2px 10px;font-size:16px}
+#stage{flex:1;min-height:0;overflow:auto;margin:0 8px 8px;border-radius:18px;background:#e9dcc9;touch-action:none;border:1.5px solid #d9c9b3}
+#svg{display:block;margin:0 auto;touch-action:none}
+.zb{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px}.zb b{min-width:48px;text-align:center}
+.bar{display:flex;gap:6px;flex-wrap:wrap}
+button{font:inherit;border:1px solid #d9d0c0;background:#faf7f0;color:inherit;border-radius:8px;padding:7px 12px}
+button.on{background:#5a2e1a;color:#fff;border-color:#5a2e1a}
+button.go{background:#5a2e1a;color:#fff;border-color:#5a2e1a}
+.grid{display:grid;grid-template-columns:1fr;gap:6px;margin-top:10px}
+.f{display:flex;flex-direction:column;gap:2px;font-size:12px;color:#7a6f66}
+.f input{font:inherit;font-size:15px;width:100%;padding:6px;border:1px solid #d9d0c0;border-radius:8px;background:#fff;color:#2a2420;text-align:center}
+h4{margin:12px 0 6px;font-size:13px;border-top:1px solid #e6dfd2;padding-top:10px}
+.hint{color:#7a6f66;margin:10px 0 0}
+.hd{display:flex;justify-content:space-between;align-items:center;margin:10px 14px 6px}
+h1{margin:0;font-size:22px;color:#5a2a18}
+#cards{display:flex;gap:8px;overflow-x:auto;padding:4px 14px 8px;flex:none}
+.card{flex:0 0 62px;border:1.5px solid #e3d5c3;border-radius:12px;background:#fffaf2;padding:6px 2px;display:flex;flex-direction:column;align-items:center;font-size:11px}
+.card svg{width:100%;height:34px}
+</style>
+</head>
+<body>
+<div class="hd"><h1>أداة الأقواس</h1><button class="go" id="sb">الإعدادات</button></div>
+<div id="cards"></div>
+<div id="top"><div id="grip"><i></i></div><div class="zb"><button id="cl">إغلاق</button><button id="png">تنزيل PNG</button><button id="clr">مسح الكل</button></div><div class="zb"><span>تكبير الصورة</span><button id="zo">−</button><b id="zv">100%</b><button id="zi">+</button><button data-z="1">1×</button><button data-z="2">2×</button><button data-z="3">3×</button></div><div id="panel"></div></div>
+<div id="stage"><svg id="svg" viewBox="0 0 1080 1920"></svg></div>
+<script>
+const NS='http://www.w3.org/2000/svg',stage=document.getElementById('stage'),svg=document.getElementById('svg'),panelEl=document.getElementById('panel');
+const B=(x,y,w,th,t,b,tl=54,bl=60)=>({type:'br',x,y,w,th,t:t.map(p=>({p,l:tl})),b:b.map(p=>({p,l:bl}))});
+const init=()=>[
+ B(334,155,561,3,[448],[0,561],55,67),B(83,381,497,3,[249],[0,166,332,497],54,64),
+ B(816,378,162,3,[81],[0,162],54,58),B(80,718,157,3,[0],[],47,0),
+ B(154,920,771,3,[386],[0,257,514,771],54,61),B(298,1293,465,3,[233],[0,465],54,35),
+ B(217,1554,441,3,[88],[0,220,441],54,47)];
+let items;try{items=JSON.parse(localStorage.getItem('brk-v1'))}catch(e){}
+if(!Array.isArray(items))items=init();
+let sel=null,bs=null,drag=null; // bs = {s:'t'|'b', i}
+const gid=()=>items.indexOf(sel);
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+
+function bbox(it){
+  if(it.type==='br'){const tm=Math.max(0,...it.t.map(a=>a.l)),bm=Math.max(0,...it.b.map(a=>a.l));return{x:it.x,y:it.y-tm,w:it.w,h:Math.max(tm+bm,it.th)}}
+  if(it.type==='line')return{x:Math.min(it.x,it.x+it.w),y:Math.min(it.y,it.y+it.h),w:Math.abs(it.w),h:Math.abs(it.h)};
+  if(it.type==='circle')return{x:it.x,y:it.y,w:it.w,h:it.w};
+  return{x:it.x,y:it.y,w:it.w,h:it.h};
+}
+function el(tag,a,parent){const e=document.createElementNS(NS,tag);for(const k in a)e.setAttribute(k,a[k]);parent.append(e);return e}
+
+function render(){
+  svg.innerHTML='<rect width="1080" height="1920" fill="#f9f4e8"/><g id="it"></g><g id="ov"></g>';
+  const gi=svg.querySelector('#it'),go=svg.querySelector('#ov');
+  const w=svg.getBoundingClientRect().width||300,k=1080/w,pad=12*k;
+  items.forEach(it=>{
+    const b=bbox(it);
+    const st={fill:'none',stroke:'#5a2e1a','stroke-width':it.th,'stroke-linecap':'square','pointer-events':'none'};
+    if(it.type==='br'){
+      let d=`M${it.x} ${it.y}H${it.x+it.w}`;
+      it.t.forEach(a=>d+=`M${it.x+a.p} ${it.y-a.l}V${it.y}`);
+      it.b.forEach(a=>d+=`M${it.x+a.p} ${it.y}V${it.y+a.l}`);
+      el('path',{...st,d},gi);
+    }else if(it.type==='line')el('path',{...st,d:`M${it.x} ${it.y}l${it.w} ${it.h}`},gi);
+    else if(it.type==='circle')el('circle',{...st,cx:it.x+it.w/2,cy:it.y+it.w/2,r:it.w/2},gi);
+    else el('rect',{...st,x:it.x,y:it.y,width:it.w,height:it.h},gi);
+    const h=el('rect',{x:b.x-pad,y:b.y-pad,width:b.w+2*pad,height:b.h+2*pad,fill:'transparent'},gi);
+    h.dataset.role='item';h.dataset.id=items.indexOf(it);
+  });
+  if(!sel||(drag&&drag.moved))return;
+  const b=bbox(sel);
+  el('rect',{x:b.x-pad,y:b.y-pad,width:b.w+2*pad,height:b.h+2*pad,fill:'none',stroke:'#3b6fd4','stroke-width':2*k,'stroke-dasharray':`${6*k} ${5*k}`,'pointer-events':'none'},go);
+  const dx=b.x-pad,dy=b.y-pad;
+  const del=el('g',{},go);del.dataset.role='del';
+  el('circle',{cx:dx,cy:dy,r:15*k,fill:'#d93a2b'},del);
+  el('path',{d:`M${dx-6*k} ${dy-6*k}l${12*k} ${12*k}m0 ${-12*k}l${-12*k} ${12*k}`,stroke:'#fff','stroke-width':2.5*k,'stroke-linecap':'round'},del);
+  try{localStorage.setItem('brk-v1',JSON.stringify(items))}catch(e){}
+}
+
+const pt=e=>{const p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;return p.matrixTransform(svg.getScreenCTM().inverse())};
+stage.addEventListener('pointerdown',e=>{
+  const t=e.target.closest('[data-role]')||e.target,r=t.dataset.role,p=pt(e);
+  if(r==='del'){items.splice(gid(),1);sel=null;bs=null;render();panel();return}
+  if(r==='item'){sel=items[+t.dataset.id];bs=null}
+  else if(r==='bh'){bs={s:t.dataset.s,i:+t.dataset.i}}
+  else if(r!=='rz'){drag={r:'pan',cx:e.clientX,cy:e.clientY,sl:stage.scrollLeft,st:stage.scrollTop};stage.setPointerCapture(e.pointerId);return}
+  drag={r,p,o:sel&&JSON.parse(JSON.stringify(sel))};
+  stage.setPointerCapture(e.pointerId);render();panel();
+});
+stage.addEventListener('pointermove',e=>{
+  if(!drag)return;
+  if(drag.r==='pan'){const px=e.clientX-drag.cx,py=e.clientY-drag.cy;if(Math.hypot(px,py)>4)drag.moved=true;stage.scrollLeft=drag.sl-px;stage.scrollTop=drag.st-py;return}
+  if(!sel)return;
+  const q=pt(e),dx=q.x-drag.p.x,dy=q.y-drag.p.y,o=drag.o;
+  if(!drag.moved&&Math.hypot(dx,dy)<4)return;drag.moved=true;
+  if(drag.r==='item'){sel.x=Math.round(o.x+dx);sel.y=Math.round(o.y+dy)}
+  else if(drag.r==='bh'){
+    const a=sel[bs.s][bs.i],oa=o[bs.s][bs.i];
+    a.p=clamp(Math.round(oa.p+dx),0,sel.w);a.l=Math.max(0,Math.round(oa.l+(bs.s==='t'?-dy:dy)));
+  }else if(drag.r==='rz'){
+    if(sel.type==='br'){setW(sel,Math.max(20,Math.round(o.w+dx)),o)}
+    else if(sel.type==='circle')sel.w=Math.max(20,Math.round(o.w+dx));
+    else if(sel.type==='rect'){sel.w=Math.max(10,Math.round(o.w+dx));sel.h=Math.max(10,Math.round(o.h+dy))}
+    else{sel.w=Math.round(o.w+dx);sel.h=Math.round(o.h+dy)}
+  }
+  render();panel();
+});
+const end=()=>{const d=drag;drag=null;if(!d)return;if(d.r==='pan'&&!d.moved){sel=null;bs=null}if(d.moved||d.r==='pan'){render();panel()}};stage.addEventListener('pointerup',end);stage.addEventListener('pointercancel',end);
+function setW(it,nw,base){const r=nw/(base||it).w;['t','b'].forEach(s=>it[s].forEach((a,i)=>a.p=Math.round((base?base[s][i].p:a.p)*r)));it.w=nw}
+
+function field(parent,label,get,set,min,max){
+  const f=document.createElement('label');f.className='f';
+  f.innerHTML=`<span>${label}: <b></b></span><div class="n"><button>−</button><input type="range" step="1"><button>+</button></div>`;
+  const i=f.querySelector('input'),o=f.querySelector('b'),[m,p]=f.querySelectorAll('button');
+  i.min=min;i.max=max;i.value=get();o.textContent=Math.round(i.value);
+  const up=v=>{v=clamp(Math.round(v),min,max);i.value=v;o.textContent=v;set(v);render()};
+  i.oninput=()=>up(+i.value);m.onclick=()=>up(+i.value-1);p.onclick=()=>up(+i.value+1);parent.append(f);
+}
+function setCount(it,s,n){
+  const arr=it[s],had=arr.length,len=had?arr[0].l:54,keep=had?arr[0].p:it.w/2;
+  while(arr.length<n)arr.push({p:0,l:len});arr.length=n;
+  if(n===1)arr[0].p=Math.round(keep);else spread(it,s);
+  bs=null;
+}
+function spread(it,s){const a=it[s],n=a.length;a.forEach((x,i)=>x.p=n===1?Math.round(it.w/2):Math.round(it.w*i/(n-1)))}
+function panel(){
+  panelEl.innerHTML='';
+  if(!sel){panelEl.innerHTML='<p class="hint">اضغط على أي شكل في الشاشة لتعديله، أو أضف شكل جديد من الأزرار.</p>';return}
+  const g=document.createElement('div');g.className='grid';panelEl.append(g);
+  
+  field(g,sel.type==='circle'?'القطر':'العرض',()=>sel.w,v=>sel.type==='br'?setW(sel,Math.max(1,v)):sel.w=v,sel.type==='line'?-1080:20,1080);
+  if(sel.type==='rect'||sel.type==='line')field(g,'الارتفاع',()=>sel.h,v=>sel.h=v,sel.type==='line'?-1920:10,1920);
+  field(g,'السمك',()=>sel.th,v=>sel.th=Math.max(1,v),1,30);
+  if(sel.type!=='br')return;
+  [['t','الفروع من فوق'],['b','الفروع من تحت']].forEach(([s,title])=>{
+    const h=document.createElement('h4');h.textContent=title;panelEl.append(h);
+    const bar=document.createElement('div');bar.className='bar';panelEl.append(bar);
+    for(let n=0;n<=4;n++){const b=document.createElement('button');b.textContent=n;if(sel[s].length===n)b.className='on';
+      b.onclick=()=>{setCount(sel,s,n);render();panel()};bar.append(b)}
+    if(sel[s].length>1){const b=document.createElement('button');b.textContent='توزيع متساوٍ';b.onclick=()=>{spread(sel,s);render();panel()};bar.append(b)}
+    if(sel[s].length){
+      const cb=document.createElement('div');cb.className='bar';cb.style.marginTop='6px';panelEl.append(cb);
+      sel[s].forEach((a,i)=>{const b=document.createElement('button');b.textContent='فرع '+(i+1);
+        if(bs&&bs.s===s&&bs.i===i)b.className='on';b.onclick=()=>{bs={s,i};render();panel()};cb.append(b)});
+    }
+    if(bs&&bs.s===s&&sel[s][bs.i]){
+      const a=sel[s][bs.i],gg=document.createElement('div');gg.className='grid';panelEl.append(gg);
+      field(gg,'موضعه من اليسار',()=>a.p,v=>a.p=clamp(v,0,sel.w),0,Math.round(sel.w));
+      field(gg,'طوله',()=>a.l,v=>a.l=Math.max(0,v),0,400);
+      [['يسار',0],['وسط',.5],['يمين',1]].forEach(([l,r])=>{
+        const b=document.createElement('button');b.textContent=l;b.style.alignSelf='end';
+        b.onclick=()=>{a.p=Math.round(sel.w*r);render();panel()};gg.append(b)});
+    }
+  });
+  const hh=document.createElement('p');hh.className='hint';hh.textContent='اختر الفرع ثم اضبط مكانه بالشريط أو بأزرار + و −.';panelEl.append(hh);
+}
+const mkB=(t,b,w=480)=>({type:'br',x:300,y:900,w,th:3,t:t.map(r=>({p:Math.round(w*r),l:54})),b:b.map(r=>({p:Math.round(w*r),l:60}))});
+const OPT=[[],[0],[.5],[1],[0,1],[0,.5,1],[0,1/3,2/3,1]];
+const pv=(t,b)=>'M10 28H90'+t.map(r=>`M${10+80*r} 14V28`).join('')+b.map(r=>`M${10+80*r} 28V42`).join('');
+const PRE=[['خط','M10 30H90',()=>({type:'line',x:300,y:900,w:400,h:0,th:3})],
+ ['دائرة','M50 8a22 22 0 1 0 .01 0',()=>({type:'circle',x:400,y:900,w:200,th:3})],
+ ['مربع','M20 10H80V50H20Z',()=>({type:'rect',x:300,y:900,w:400,h:240,th:3})]];
+const G=[];OPT.forEach(bt=>OPT.forEach(tp=>{if(bt.length&&tp.length<=bt.length)G.push([tp,bt])}));
+[[[.5],[0,1]],...G.slice(0,5)].forEach(([tp,bt])=>PRE.push(['',pv(tp,bt),()=>mkB(tp,bt)]));
+PRE.forEach(([n,d,f])=>{
+  const c=document.createElement('button');c.className='card';c.title=n;
+  c.innerHTML=`<svg viewBox="0 0 100 60"><path d="${d}" fill="none" stroke="#5a2e1a" stroke-width="2.2"/></svg><span>${n}</span>`;
+  c.onclick=()=>{const it=f();items.push(it);sel=it;bs=null;render();panel()};
+  document.getElementById('cards').append(c);
+});
+document.getElementById('png').onclick=()=>{
+  const c=svg.cloneNode(true);c.querySelector('#ov').remove();c.setAttribute('xmlns',NS);c.setAttribute('width',1080);c.setAttribute('height',1920);
+  const im=new Image();im.onload=()=>{const cv=document.createElement('canvas');cv.width=1080;cv.height=1920;cv.getContext('2d').drawImage(im,0,0);
+    cv.toBlob(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='brackets.png';a.click()})};
+  im.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(new XMLSerializer().serializeToString(c));
+};
+let zoom=1;
+function applySize(){const w=Math.round((stage.clientWidth-4)*zoom);svg.style.width=w+'px';svg.style.height=Math.round(w*16/9)+'px';render()}
+function setZoom(z){z=clamp(z,.5,4);const cx=(stage.scrollLeft+stage.clientWidth/2)/stage.scrollWidth,cy=(stage.scrollTop+stage.clientHeight/2)/stage.scrollHeight;
+  zoom=z;applySize();stage.scrollLeft=cx*stage.scrollWidth-stage.clientWidth/2;stage.scrollTop=cy*stage.scrollHeight-stage.clientHeight/2;document.getElementById('zv').textContent=Math.round(z*100)+'%'}
+document.getElementById('zi').onclick=()=>setZoom(zoom+.25);document.getElementById('zo').onclick=()=>setZoom(zoom-.25);
+document.querySelectorAll('[data-z]').forEach(b=>b.onclick=()=>setZoom(+b.dataset.z));
+new ResizeObserver(applySize).observe(stage);
+(()=>{const c=document.getElementById('clr');let t;c.onclick=()=>{
+  if(c.dataset.arm){clearTimeout(t);items=[];sel=null;bs=null;delete c.dataset.arm;c.textContent='مسح الكل';c.className='';render();panel();return}
+  c.dataset.arm=1;c.textContent='اضغط مرة ثانية للتأكيد';c.className='on';
+  t=setTimeout(()=>{delete c.dataset.arm;c.textContent='مسح الكل';c.className=''},3000)}})();
+(()=>{const top=document.getElementById('top'),g=document.getElementById('grip');let y0=null;
+g.onpointerdown=e=>{y0=e.clientY;g.setPointerCapture(e.pointerId);top.style.transition='none'};
+g.onpointermove=e=>{if(y0!==null)top.style.transform=`translateY(${Math.max(0,e.clientY-y0)}px)`};
+const up=e=>{if(y0===null)return;const d=e.clientY-y0;y0=null;top.style.transition='';top.style.transform='';if(d>60)top.classList.remove('open')};
+g.onpointerup=up;g.onpointercancel=up})();
+document.getElementById('sb').onclick=()=>document.getElementById('top').classList.toggle('open');document.getElementById('cl').onclick=()=>document.getElementById('top').classList.remove('open');
+applySize();panel();
+</script>
+</body>
+</html>
